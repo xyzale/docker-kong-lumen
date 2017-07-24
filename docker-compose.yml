@@ -1,0 +1,98 @@
+##################################################################
+#              Docker Compose file that starts Kong              #
+##################################################################
+
+# Load Balancing
+consul:
+  image: progrium/consul:latest
+  command: -server -bootstrap -ui-dir /ui -client=0.0.0.0
+  restart: always
+  mem_limit: 128m
+  ports:
+    - 8500:8500
+  expose:
+    - 53
+    - 8300
+    - 8301
+    - 8302
+    - 8400
+    - 8500
+  dns:
+    - 127.0.0.1
+
+nginx-lb:
+  build: nginx/
+  mem_limit: 128m
+  ports:
+    - 8000:8000
+    - 8443:8443
+    - 8001:8001
+    - 8123:8123
+  expose:
+    - 8000
+    - 8443
+    - 8001
+    - 8123
+  links:
+    - consul:consul
+    - lumen
+  restart: always
+  command: >
+      /bin/containerpilot
+      -config file:///etc/containerpilot/containerpilot.json
+      nginx -g "daemon off;"
+
+# Kong Database
+
+kong-database:
+  image: postgres:9.4
+  ports:
+    - 5432
+  environment:
+    - POSTGRES_USER=kong
+    - POSTGRES_DB=kong
+
+# Kong
+
+kong:
+  build: kong/
+  restart: always
+  links:
+    - kong-database:kong-database
+    - consul
+  ports:
+    - 8000
+    - 8443
+    - 8001
+  expose:
+    - 7946
+    - 7946/udp
+  environment:
+    - KONG_DATABASE=postgres
+    - KONG_PG_HOST=kong-database
+
+lumen:
+  build: lumen/
+  container_name: lumen
+  volumes:
+    - /Users/alessio.pieruccetti/PhpstormProjects/lumen/:/var/www/lumen
+  ports:
+    - 9000:9000
+  links:
+    - consul
+  expose:
+    - 9000
+  environment:
+    APP_ENV: local
+    APP_DEBUG: 'true'
+    APP_KEY: base64:4M7aJn0obCTFIQXqFd4dbq+lTyIFZcy+alF8di9tTi4=
+    APP_LOCALE: en
+    APP_FALLBACK_LOCALE: en
+    DB_CONNECTION: mysql
+    DB_HOST: db
+    DB_DATABASE: lumen
+    DB_USERNAME: lumen
+    DB_PASSWORD: secret
+    MEMCACHED_HOST: cache
+    CACHE_DRIVER: memcached
+    XDEBUG_CONFIG: remote_host=0.0.0.0
